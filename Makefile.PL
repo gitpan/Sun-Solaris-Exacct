@@ -1,13 +1,14 @@
 #
-# Copyright 2002 Sun Microsystems, Inc.  All rights reserved.
+# Copyright 2002-2003 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-#ident	"@(#)Makefile.PL	1.2	02/09/09 SMI"
+#ident	"@(#)Makefile.PL	1.3	03/06/14 SMI"
 #
 # Makefile.PL for ::Exacct
 #
 
 #
+# Linker flags note:
 # The various .so files that comprise the ::Exacct module need to be able to
 # cross-call each other, and therefore to prevent runtime linker errors it is
 # necessary to establish linker dependencies between the various .so files.
@@ -35,67 +36,17 @@ use strict;
 use warnings;
 use ExtUtils::MakeMaker;
 
-# #defines.
-my @defines = ( DEFINE => exists($ENV{RELEASE_BUILD}) ? '-DNDEBUG' : '' );
-
-# List of POD pages to install.
-my @man3pods = ( MAN3PODS => {} );
+our (@defines, @man3pods);
 
 #
-# If not building as part of ON.
+# MakeMaker overrides.
 #
-if (! exists($ENV{CODEMGR_WS})) {
-
-	#
-	# Suppress the setting of LD_RUN_PATH.  The ON build environment
-	# contains a modified MakeMaker that does this automatically, so we
-	# only need to do this if we are building outside of ON.
-	#
-	package MY;
-	no warnings qw(once);
-
-	# Override const_loadlibs to remove LD_RUN_PATH cruft.
-	*const_loadlibs = sub
-	{
-		my $self = shift(@_);
-		delete($self->{LD_RUN_PATH});
-		return($self->SUPER::const_loadlibs(@_));
-	};
-
-	# Override dynamic_lib to get rid of LD_RUN_PATH cruft.
-	*dynamic_lib = sub
-	{
-		my $self = shift(@_);
-		my $txt = $self->SUPER::dynamic_lib(@_);
-		$txt =~ s/LD_RUN_PATH=\S*\s*//;
-		return($txt);
-	};
-
-	# Turn off debugging.
-	@defines = ();
-
-	#
-	# Install the POD documentation for non-ON builds.
-	#
-	my $man3pfx = '$(INST_MAN3DIR)/Sun::Solaris::Exacct';
-	@man3pods = (
-	    MAN3PODS => { 'pod/Exacct.pod' => $man3pfx . '.$(MAN3EXT)' }
-	);
-}
-
-WriteMakefile(
-    NAME         => 'Sun::Solaris::Exacct',
-    VERSION_FROM => 'Exacct.pm',
-    DIR          => [ qw(Catalog File Object) ],
-    H            => [ 'exacct_common.xh' ],
-    LIBS         => [ '-lexacct' ],
-    @defines,
-    @man3pods,
-    dynamic_lib  => { OTHERLDFLAGS => '-h $(DLBASE).$(DLEXT)' },
-    realclean    => { FILES => 'ExacctDefs.xi' },
-);
-
 package MY;
+no warnings qw(once);
+
+#
+# Overrides that are common to both the ON and non-ON build environments.
+#
 
 #
 # Force the parent directory to be built first, because the sub-modules all
@@ -116,26 +67,108 @@ sub install
 {
 	my $self = shift(@_);
 	my $txt = $self->SUPER::install(@_);
-	$txt =~ s/all pure_/all .WAIT pure_/g;
+	$txt =~ s/ all / all .WAIT /g;
 	return($txt);
 }
 
 #
-# Override the default empty 'postamble' sub and replace it with one that
-# explicitly records the dependency between Exacct.c (generated from
-# Exacct.xs by xsubpp) and the ExacctDefs.xi file (generated from exacct.h and
-# sys/exacct.h by extract_defines).  This ensures that the constant values
-# exported by the perl module stay up-to date with the corresponding #defines.
+# Suppress the setting of LD_RUN_PATH, as it isn't necessary.
 #
-sub postamble
+sub const_loadlibs
 {
-	return <<'EOF';
-EXACCT_H=	/usr/include/exacct.h \
-		/usr/include/sys/exacct.h
+	my $self = shift(@_);
+	delete($self->{LD_RUN_PATH});
+	return($self->SUPER::const_loadlibs(@_));
+}
+
+sub dynamic_lib
+{
+	my $self = shift(@_);
+	my $txt = $self->SUPER::dynamic_lib(@_);
+	$txt =~ s/LD_RUN_PATH=\S*\s*//;
+	return($txt);
+}
+
+#
+# ON-specific overrides.
+#
+if (exists($ENV{CODEMGR_WS}) && exists($ENV{ENVCPPFLAGS1})) {
+	#
+	# Override postamble and replace it with one that explicitly records
+	# the dependency between Exacct.c (generated from Exacct.xs by xsubpp)
+	# and the ExacctDefs.xi file (generated from sys/exacct.h by
+	# extract_defines).  Note we have to mimic the -I processing done by cc
+	# to find the correct version of the file, as we want the copy from the
+	# proto area rather than /usr/include.  This ensures that the constant
+	# values exported by the perl module stay up-to date with the
+	# corresponding #defines.
+	#
+	*postamble = sub {
+		return <<'EOF';
+EXACCT_H:sh= \
+	for dir in $ENVCPPFLAGS1 $ENVCPPFLAGS2 $ENVCPPFLAGS3 $ENVCPPFLAGS4 \
+	    /usr/include; do \
+		dir=`expr $dir : '^-I\(.*\)$' \| $dir`; \
+		file="$dir/sys/exacct.h"; \
+		test -f $file && echo $file && break; \
+	done;
 
 Exacct.c:	ExacctDefs.xi
 
 ExacctDefs.xi:	extract_defines $(EXACCT_H)
-	$(PERL) extract_defines $(INC) Exacct $@
+	$(PERL) extract_defines Exacct $@ $(EXACCT_H)
 EOF
+	};
+
+	# Enable/disable debugging as required.
+	@main::defines = ( DEFINE => '-DEXACCT_DEBUG' )
+	    if (! exists($ENV{RELEASE_BUILD}));
+
+	# Don't install POD pages for ON.
+	@main::man3pods = ( MAN3PODS => {} );
+
+#
+# Non-ON overrides.
+#
+} else {
+	#
+	# Override postamble and replace it with one that explicitly records
+	# the dependency between Exacct.c (generated from Exacct.xs by xsubpp)
+	# and the ExacctDefs.xi file (generated from /usr/include/sys/exacct.h
+	# by extract_defines).  This ensures that the constant values exported
+	# by the perl module stay up-to date with the corresponding #defines.
+	#
+	*postamble = sub {
+		return <<'EOF';
+EXACCT_H = /usr/include/sys/exacct.h
+
+Exacct.c:	ExacctDefs.xi
+
+ExacctDefs.xi:	extract_defines $(EXACCT_H)
+	$(PERL) extract_defines Exacct $@ $(EXACCT_H)
+EOF
+	};
+
+	# Install the POD documentation for non-ON builds.
+	my $man3pfx = '$(INST_MAN3DIR)/Sun::Solaris::Exacct';
+	@main::man3pods = (
+	    MAN3PODS => { 'pod/Exacct.pod' => $man3pfx . '.$(MAN3EXT)' }
+	);
 }
+
+#
+# Having set everything up, write the Makefile.
+#
+package main;
+
+WriteMakefile(
+    NAME         => 'Sun::Solaris::Exacct',
+    VERSION_FROM => 'Exacct.pm',
+    DIR          => [ qw(Catalog File Object) ],
+    H            => [ 'exacct_common.xh' ],
+    LIBS         => [ '-lexacct' ],
+    @defines,
+    @man3pods,
+    dynamic_lib  => { OTHERLDFLAGS => '-h $(DLBASE).$(DLEXT)' },
+    realclean    => { FILES => 'ExacctDefs.xi' },
+);

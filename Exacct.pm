@@ -2,7 +2,7 @@
 # Copyright 2002-2003 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-#ident	"@(#)Exacct.pm	1.3	03/03/13 SMI"
+#ident	"@(#)Exacct.pm	1.4	03/06/14 SMI"
 #
 # Exacct.pm contains wrappers for the exacct error functions and syscalls,
 # and some 'shorthand' convenience functions.
@@ -14,7 +14,7 @@ use warnings;
 
 package Sun::Solaris::Exacct;
 
-our $VERSION = '1.3';
+our $VERSION = '1.4';
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
 

@@ -1,8 +1,8 @@
 #
-# Copyright 2002 Sun Microsystems, Inc.  All rights reserved.
+# Copyright 2002-2003 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-#ident	"@(#)extract_defines	1.2	02/09/09 SMI"
+#ident	"@(#)extract_defines	1.3	03/06/14 SMI"
 #
 # This script scans the exacct header files and extracts the names of any
 # #defines that are to be exported by the Exacct modules.  All such #defines
@@ -46,11 +46,13 @@ our %ModMap = (
 	],
 	File => [
 		typefn	=> \&default_typefn,
+		# From exacct.h.
 		declare	=> [ qw(EO_HEAD EO_TAIL EO_NO_VALID_HDR
 			     EO_POSN_MSK EO_VALIDATE_MSK) ],
 	],
 	Object => [
 		typefn	=> \&default_typefn,
+		# From sys/exacct.h.
 		declare	=> [ qw(EO_ERROR EO_NONE EO_ITEM EO_GROUP) ],
 	],
 );
@@ -91,13 +93,14 @@ sub catalog_typefn
 #
 sub process_file
 {
-	my ($file, $pattern, $inc, $typefn, $defines) = @_;
+	my ($file, $filelist, $pattern, $typefn, $defines) = @_;
 	my $fh;
-	foreach my $i (@$inc, '/usr/include') {
-		last if open($fh, '<', "$i/$file");
+	if ($_ = (grep(m{/$file$}, @$filelist))[0]) {
+		open($fh, '<', $_) || die("Can't open $_: $!\n");
+	} else {
+		die("Can't find $file\n");
 	}
-	die("Can't open $file: $!\n") unless ($fh);
-	my ($line);
+	my $line;
 	while (defined($line = <$fh>)) {
 		if ($line =~ /#define\s+\b($pattern)\b/) {
 			$defines->{$1} = &$typefn($1);
@@ -111,22 +114,12 @@ sub process_file
 #
 
 # Check arguments and open the output file.
-my (@inc, @arg);
-while (my $a  = shift(@ARGV)) {
-	if ($a =~ /^-I(.*)$/) {
-		push(@inc, $1 ? $1 : shift(@ARGV));
-	} elsif ($a !~ /^-/) {
-		push(@arg, $a);
-	}
-}
-if (@arg != 2) {
-	die("Usage is extract_defines " .
-	    "[-I <include dir> ...] <module> <output file>\n");
-}
-my ($module, $outfile) = @arg;
+die("Usage is extract_defines <module> <output file> <input files...>\n")
+    unless (@ARGV >= 2);
+my ($module, $outfile, @filelist) = @ARGV;
 my $mm;
 if (! defined($mm = $ModMap{$module})) {
-	die("Don't know how to handle module $module\n");
+	die("Don't know how to handle module $module\n")
 }
 my $out;
 if (! open($out, ">$outfile")) {
@@ -147,9 +140,10 @@ while ($i < @$mm) {
 			$defines->{$d} = &$tfn($d);
 		}
 	} elsif ($act eq 'scan') {
-		process_file($parm->[0], $parm->[1], \@inc, $tfn, $defines);
+		process_file($parm->[0], \@filelist, $parm->[1], $tfn,
+		    $defines);
 	} else {
-		die("Illegal action $act!\n");
+		die("Illegal action $act\n");
 	}
 }
 

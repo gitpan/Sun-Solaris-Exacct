@@ -1,5 +1,5 @@
 /*
- * Copyright 2002 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2002-2003 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  *
  * Common includes and defines for Sun::Solaris::Exacct.
@@ -8,7 +8,7 @@
 #ifndef	_EXACCT_COMMON_H
 #define	_EXACCT_COMMON_H
 
-#pragma ident	"@(#)exacct_common.xh	1.1	02/05/20 SMI"
+#pragma ident	"@(#)exacct_common.xh	1.2	03/06/14 SMI"
 
 /* Exacct related includes. */
 #include <exacct.h>
@@ -27,19 +27,16 @@
 /* Root of the Exacct namespace. */
 #define	PKGBASE	"Sun::Solaris::Exacct"
 
-/*
- * Debugging assertion macros.
- * Enabled if the environment variable RELEASE_BUILD is undefined.
- */
-#ifdef NDEBUG
-#define	PERL_ASSERT(EXP)		((void)0)
-#define	PERL_ASSERTMSG(EXP, MSG)	((void)0)
-#else
+/* Debugging assertion macros. */
+#ifdef EXACCT_DEBUG
 #define	PERL_ASSERT(EXPR) ((void)((EXPR) || \
 	(croak("%s(%d) assertion failed: %s", __FILE__, __LINE__, #EXPR), 0), \
 	0))
 #define	PERL_ASSERTMSG(EXPR, MSG) ((void)((EXPR) || \
 	(croak("%s(%d) %s", __FILE__ __LINE__, MSG), 0), 0))
+#else
+#define	PERL_ASSERT(EXP)		((void)0)
+#define	PERL_ASSERTMSG(EXP, MSG)	((void)0)
 #endif
 
 /*
